@@ -34,6 +34,19 @@ async function startServer() {
     }
   });
 
+  app.post("/api/stripe/checkout", async (req, res) => {
+    try {
+      if (!process.env.STRIPE_SECRET_KEY) {
+        console.log("Add STRIPE_SECRET_KEY to .env");
+      }
+      // Mock Stripe checkout session creation
+      console.log(`[Mock] Creating Stripe checkout session...`);
+      res.json({ status: "success", url: "https://checkout.stripe.com/mock" });
+    } catch (error) {
+      res.status(500).json({ error: "Checkout failed" });
+    }
+  });
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
