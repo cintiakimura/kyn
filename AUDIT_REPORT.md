@@ -1,280 +1,137 @@
-# kyn — Git status & functionality audit report
+# kyn — Audit test report
 
-**Date:** Generated from current workspace state  
+**Date:** 2025-03-06  
 **Branch:** main  
-**Remote:** origin (https://github.com/cintiakimura/kyn.git)
+**Last commit:** 9f20e42 — feat: Stripe Checkout (Prototype/King Pro), upgrade-to-deploy flow, update-paid-status + Supabase
 
 ---
 
-## 1. Git & GitHub commit status
+## 1. Git status
 
-### 1.1 Summary
+| Item | Result |
+|------|--------|
+| Branch | main |
+| vs origin | **ahead 1** (1 commit not pushed) |
+| Last commit | `9f20e42` feat: Stripe Checkout (Prototype/King Pro), upgrade-to-deploy flow, update-paid-status + Supabase |
+| Uncommitted changes | None (clean working tree after fixes) |
 
-**Not all changes are committed to GitHub.**
-
-- **Last commit on main:** `b04f5f5 feat: Add landing, login, and pricing pages`
-- **Branch:** Up to date with `origin/main` (nothing pushed that isn’t committed).
-- There are **staged** changes, **unstaged** changes, and **untracked** files that are not in any commit.
-
-### 1.2 Staged (not yet committed)
-
-These files are staged but **no commit has been made**:
-
-| File | Description |
-|------|-------------|
-| `.env.example` | Env template changes |
-| `PROJECT_SUMMARY.md` | Project summary doc |
-| `package-lock.json` | Lockfile updates |
-| `package.json` | Scripts/deps (older set) |
-| `server.ts` | Server routes (older set) |
-| `src/App.tsx` | Routes (older set) |
-| `src/components/SetupWizard.tsx` | Setup wizard |
-| `src/config/agentConfig.ts` | Grok/Eve agent config |
-| `src/lib/setupStorage.ts` | Setup localStorage |
-| `src/pages/Builder.tsx` | Builder (older set) |
-| `src/pages/Dashboard.tsx` | Dashboard (older set) |
-| `src/pages/Landing.tsx` | Landing (older set) |
-| `src/pages/Settings.tsx` | Settings page |
-| `src/pages/Setup.tsx` | Setup page |
-| `vite.config.ts` | Vite config (older set) |
-
-### 1.3 Unstaged (modified, not staged)
-
-| File | Likely content |
-|------|----------------|
-| `.gitignore` | Added `kyn.db`, `release/` |
-| `package.json` | Name `kyn`, version, `main`, `electron` script, electron devDep |
-| `server.ts` | Auth + projects API, `db` import |
-| `src/App.tsx` | Route `/builder/:projectId` |
-| `src/pages/Builder.tsx` | projectId load/save, text input, TTS, code apply |
-| `src/pages/Dashboard.tsx` | API projects list/create, navigate to `/builder/:projectId` |
-| `src/pages/Landing.tsx` | Latest landing copy/layout |
-| `src/pages/Login.tsx` | Session API, setUserIdAfterLogin |
-
-### 1.4 Untracked
-
-| Path | Description |
-|------|-------------|
-| `DESKTOP_APP.md` | Desktop app (Electron) instructions |
-| `PROJECT_DOCUMENTATION.md` | Full project documentation |
-| `db.ts` | SQLite projects + chat persistence |
-| `electron/` | Electron main process (`main.js`) |
-| `src/lib/auth.ts` | getUserId, setUserIdAfterLogin, clearUserId |
-
-### 1.5 What to do to get everything on GitHub
-
-1. Stage all current work:
-   ```bash
-   git add .gitignore package.json server.ts src/App.tsx src/pages/Builder.tsx src/pages/Dashboard.tsx src/pages/Landing.tsx src/pages/Login.tsx DESKTOP_APP.md PROJECT_DOCUMENTATION.md db.ts electron/ src/lib/auth.ts
-   ```
-2. Commit:
-   ```bash
-   git commit -m "feat: per-user projects + chat persistence, Grok chat improvements, Electron desktop, docs"
-   ```
-3. Push:
-   ```bash
-   git push origin main
-   ```
-
-(If you prefer to keep `.env` and local-only files out, adjust `git add` or use `.gitignore`.)
+**Action:** Run `git push origin main` to sync with remote.
 
 ---
 
-## 2. Functionality audit
+## 2. npm audit (security)
 
-### 2.1 Build & lint
+| Severity | Count |
+|----------|--------|
+| Critical | 0 |
+| High | 0 |
+| Moderate | **3** |
+| Low | 0 |
+
+### 2.1 Vulnerabilities
+
+| Package | Affected | Issue |
+|---------|----------|--------|
+| **dompurify** | 3.1.3 – 3.3.1 | Cross-site Scripting (XSS) — [GHSA-v2wj-7wpq-c8vv](https://github.com/advisories/GHSA-v2wj-7wpq-c8vv) |
+| **monaco-editor** | ≥0.54.0-dev-20250909 | Depends on vulnerable dompurify |
+| **electron** | &lt;35.7.5 | ASAR Integrity Bypass via resource modification — [GHSA-vmqv-hx8q-j7mg](https://github.com/advisories/GHSA-vmqv-hx8q-j7mg) |
+
+### 2.2 Remediation
+
+- **dompurify / monaco-editor:** `npm audit fix` (may update transitive deps).
+- **electron:** `npm audit fix --force` will suggest electron@40.8.0 (breaking change). Prefer upgrading Electron in a dedicated pass and re-running audit.
+
+---
+
+## 3. Lint (TypeScript)
 
 | Check | Result |
 |-------|--------|
-| `npm run lint` (tsc --noEmit) | **PASS** — No TypeScript errors. |
+| `npm run lint` (tsc --noEmit) | **PASS** |
+
+**Fixes applied during audit:**
+
+- `src/api/create-checkout-session.ts`: use `success_url: successUrl` (no shorthand to avoid TS strict).
+- `src/pages/Builder.tsx`: add `getPaidStatus`, `setPaidFromSuccess` to import from `../lib/auth`.
 
 ---
 
-### 2.2 Backend API
+## 4. Build (production)
 
-| Endpoint | Method | Implemented | Notes |
-|----------|--------|-------------|--------|
-| `/api/auth/session` | POST | ✅ | Returns `userId`; mock auth. |
-| `/api/users/:userId/projects` | GET | ✅ | Lists projects from SQLite. |
-| `/api/users/:userId/projects` | POST | ✅ | Creates project; body `{ name }`. |
-| `/api/users/:userId/projects/:projectId` | GET | ✅ | Returns project (code, package_json, chat_messages). |
-| `/api/users/:userId/projects/:projectId` | PUT | ✅ | Updates project; body code, package_json, chat_messages, etc. |
-| `/api/agent/config` | GET | ✅ | Returns agentId, systemPrompt, preCodeQuestions. |
-| `/api/agent/chat` | POST | ✅ | Forwards to Grok; body `{ messages }`. |
+| Check | Result |
+|-------|--------|
+| `npm run build` (vite build) | **PASS** |
+
+**Output:** 1941 modules transformed; assets under `dist/`. One Rollup warning: chunk size &gt; 500 kB (main app bundle); consider code-splitting or `build.rollupOptions.output.manualChunks` / `chunkSizeWarningLimit` if desired.
+
+---
+
+## 5. Backend API
+
+| Endpoint | Method | Status | Notes |
+|----------|--------|--------|------|
+| `/api/auth/session` | POST | ✅ | Returns/create userId (mock auth). |
+| `/api/users/:userId/projects` | GET | ✅ | List projects (SQLite). |
+| `/api/users/:userId/projects` | POST | ✅ | Create project; body `{ name }`. |
+| `/api/users/:userId/projects/:projectId` | GET | ✅ | Get project (code, package_json, chat_messages). |
+| `/api/users/:userId/projects/:projectId` | PUT | ✅ | Update project. |
+| `/api/agent/config` | GET | ✅ | agentId, systemPrompt, preCodeQuestions. |
+| `/api/agent/chat` | POST | ✅ | Grok chat; body `{ messages }`. |
+| `/api/create-checkout-session` | POST | ✅ | Stripe Checkout; body `{ plan: 'prototype'\|'king_pro' }`; returns `{ id, url }`. Env: STRIPE_SECRET_KEY, STRIPE_PROTOTYPE_PRICE_ID, STRIPE_KING_PRO_PRICE_ID. |
+| `/api/update-paid-status` | POST | ✅ | Body `{ plan, userId }`; upserts Supabase `users` (paid, plan). Requires SUPABASE_URL, SUPABASE_ANON_KEY. |
 | `/api/deploy` | POST | ✅ | Mock. |
 | `/api/netlify/hook` | POST | ✅ | Mock. |
-| `/api/stripe/checkout` | POST | ✅ | Mock. |
-
-**Backend dependency:** `db.ts` uses `better-sqlite3`; `server.ts` imports `./db.js` (resolved to `db.ts` by tsx). SQLite file: `kyn.db` (created in project root if missing).
+| `/api/stripe/checkout` | POST | ✅ | Legacy mock. |
 
 ---
 
-### 2.3 Auth & session
-
-| Feature | Status | Where |
-|---------|--------|--------|
-| Session API returns userId | ✅ | `POST /api/auth/session` |
-| Login calls session and stores userId | ✅ | `Login.tsx` → `setUserIdAfterLogin(userId)` |
-| getUserId() from localStorage or API | ✅ | `src/lib/auth.ts` |
-| userId used for projects API | ✅ | Dashboard, Builder use `getUserId()` then fetch/update by userId |
-
----
-
-### 2.4 Persistence (projects & chat)
-
-| Feature | Status | Notes |
-|---------|--------|--------|
-| SQLite schema (projects table) | ✅ | `db.ts`: id, user_id, name, status, last_edited, code, package_json, chat_messages, created_at |
-| List projects per user | ✅ | Dashboard: `GET /api/users/:userId/projects` on mount |
-| Create project | ✅ | Dashboard: Open File / Open from GitHub → `POST .../projects` → navigate to `/builder/:projectId` |
-| Load project in Builder | ✅ | Builder: `useParams().projectId` → `GET .../projects/:projectId` → set code, packageJson, chatMessages |
-| Save code/package (debounced) | ✅ | Builder: useEffect 1.5s debounce → `saveProject({ code, package_json })` |
-| Save chat on new message | ✅ | Builder: saveProject({ chat_messages }) after user message and after Grok reply (success/error) |
-| /builder without projectId | ✅ | No load/save; local state only. |
-
----
-
-### 2.5 Frontend routes
-
-| Route | Page | Verified |
-|-------|------|----------|
-| `/` | Landing | ✅ |
-| `/login` | Login | ✅ |
-| `/pricing` | Pricing | ✅ |
-| `/dashboard` | Dashboard | ✅ |
-| `/onboarding` | Onboarding | ✅ |
-| `/builder` | Builder (no project) | ✅ |
-| `/builder/:projectId` | Builder (with project) | ✅ |
-| `/setup` | Setup | ✅ |
-| `/settings` | Settings | ✅ |
-
----
-
-### 2.6 Landing
-
-| Feature | Status |
-|---------|--------|
-| Header (Login, Sign up) | ✅ |
-| Hero (kyn, tagline, copy) | ✅ |
-| Price cards (5.99 €, 19.99 €) | ✅ |
-| Four content cards (2×2) | ✅ |
-| Navigation to /login | ✅ |
-
----
-
-### 2.7 Login
-
-| Feature | Status |
-|---------|--------|
-| Session API call, store userId | ✅ |
-| Navigate to /dashboard | ✅ |
-| GitHub / Google buttons (mock) | ✅ |
-
----
-
-### 2.8 Dashboard
-
-| Feature | Status |
-|---------|--------|
-| Load projects from API (getUserId → GET projects) | ✅ |
-| Loading state | ✅ |
-| Empty state (no projects) | ✅ |
-| Open File → create project → /builder/:projectId | ✅ |
-| Open from GitHub → create project "my-repo" → /builder/:projectId | ✅ |
-| Project cards → /builder/:projectId | ✅ |
-| Tabs (All / Deployed / Drafts), search | ✅ |
-| Sidebar, avatar dropdown | ✅ |
-| Chat panel (no Grok API) | ✅ |
-
----
-
-### 2.9 Builder
-
-| Feature | Status |
-|---------|--------|
-| useParams().projectId | ✅ |
-| Load project when projectId set | ✅ |
-| "Loading project..." when projectLoading | ✅ |
-| saveProject (code, package_json, chat_messages) | ✅ |
-| Debounced save (code, packageJson) | ✅ |
-| Chat: text input + Send | ✅ |
-| Chat: Open talk (voice) → sendToGrok | ✅ |
-| Chat: sendToGrok → POST /api/agent/chat | ✅ |
-| Apply code blocks from Grok reply (setCode, setPackageJsonContent) | ✅ |
-| TTS (Grok speaks) toggle | ✅ |
-| Copy last, paperclip upload | ✅ |
-| Tabs (Live Preview, App.tsx, package.json) | ✅ |
-| Terminal, activity bar, explorer | ✅ |
-| Setup wizard when !setupComplete | ✅ |
-| Deploy buttons (mock) | ✅ |
-
----
-
-### 2.10 Grok / agent
-
-| Feature | Status |
-|---------|--------|
-| agentConfig: AGENT_ID, AGENT_SYSTEM_PROMPT, AGENT_PRE_CODE_QUESTIONS | ✅ |
-| 8 pre-code questions in prompt | ✅ |
-| VETR and core rules in prompt | ✅ |
-| POST /api/agent/chat → xAI Grok API | ✅ |
-| GROK_API_KEY required (503 if missing) | ✅ |
-| Conversation history sent to Grok | ✅ |
-
----
-
-### 2.11 Setup & settings
-
-| Feature | Status |
-|---------|--------|
-| SetupWizard (GitHub, Supabase, Vercel, Stripe, Domain) | ✅ |
-| setupStorage (localStorage) | ✅ |
-| Settings: Connect Tools + Secrets | ✅ |
-| /setup page (SetupWizard in shell) | ✅ |
-
----
-
-### 2.12 Onboarding & mind map
-
-| Feature | Status |
-|---------|--------|
-| Onboarding steps + MindMap (xyflow) | ✅ |
-| Export tech-spec.json | ✅ |
-
----
-
-### 2.13 Desktop app (Electron)
+## 6. Stripe & paid flow
 
 | Item | Status |
 |------|--------|
-| electron/main.js | ✅ Present |
-| package.json "main": "electron/main.js" | ✅ |
-| Script "electron": "electron ." | ✅ |
-| electron devDependency | ✅ |
-| DESKTOP_APP.md | ✅ (instructions for run + package) |
+| Env vars | STRIPE_SECRET_KEY, STRIPE_PUBLIC_KEY, STRIPE_PROTOTYPE_PRICE_ID, STRIPE_KING_PRO_PRICE_ID (no hardcoding). |
+| Create session | `src/api/create-checkout-session.ts`; mode subscription; success_url `/builder?paid=true&plan={plan}`; cancel_url `/builder`. |
+| Builder: Upgrade to Deploy | Shown when `!user.paid`; opens modal. |
+| Modal options | Prototype $5.99/mo, King Pro $19.99/mo → POST `/api/create-checkout-session` with `{ plan }` → redirect to `url`. |
+| Success callback | Builder: on `?paid=true&plan=...` → POST `/api/update-paid-status` with `{ plan, userId }` → setPaidFromSuccess(plan) → clear query. |
+| Deploy gate | If paid → deploy; else show upgrade modal. |
+| Supabase | update-paid-status upserts `users` (id, paid, plan). Table must exist. |
 
 ---
 
-## 3. Summary table
+## 7. Frontend (key areas)
 
-| Area | Status | Notes |
-|------|--------|--------|
-| Git / GitHub | ⚠️ Not all committed | Staged, unstaged, and untracked changes; push after commit. |
-| Lint | ✅ Pass | tsc --noEmit clean. |
-| Backend API | ✅ | Auth, projects CRUD, agent config, Grok chat, deploy/Netlify/Stripe mocks. |
-| Auth & session | ✅ | Session API + Login store userId; used for projects. |
-| Persistence | ✅ | SQLite db.ts; projects and chat load/save by projectId. |
-| Routes | ✅ | All 9 routes present. |
-| Landing / Login / Dashboard | ✅ | As designed; Dashboard uses API. |
-| Builder | ✅ | projectId load/save, chat (text + voice), Grok, code apply, TTS. |
-| Grok agent | ✅ | Config and chat API; Grok-only. |
-| Setup / Settings | ✅ | Wizard + Settings page. |
-| Onboarding / Mind map | ✅ | Steps + xyflow. |
-| Electron | ✅ | Main process and docs in place. |
+| Area | Status |
+|------|--------|
+| Routes | /, /login, /pricing, /dashboard, /onboarding, /builder, /builder/:projectId, /setup, /settings. |
+| Auth | getUserId(), getPaidStatus(), setPaidFromSuccess() in `src/lib/auth.ts`; session + Login. |
+| Dashboard | Projects list/create, chat panel (no Grok), Open File / Open from GitHub. |
+| Builder | Load/save by projectId, chat + Grok, voice (STT), TTS toggle, upgrade modal, deploy buttons gated by paid. |
+| Agent config | AGENT_SYSTEM_PROMPT from UNBREAKABLE_RULES (markdown stripped). |
 
 ---
 
-## 4. Conclusion
+## 8. Summary
 
-- **Git:** Current work (persistence, auth, Builder load/save, Grok chat improvements, Electron, docs) is **not** fully committed. Staging everything, committing, and pushing will align GitHub with the repo.
-- **Functionality:** All audited areas are implemented as designed; lint passes. No automated E2E tests were run; manual run of the app and one smoke test is recommended after commit/push.
+| Area | Result |
+|------|--------|
+| Git | Clean; 1 commit ahead of origin. |
+| npm audit | 3 moderate (dompurify/monaco, electron). |
+| Lint | Pass. |
+| Build | Pass (chunk size warning only). |
+| Backend API | All routes present; Stripe + update-paid-status implemented. |
+| Stripe / paid | Env-only; checkout session + success → update-paid-status + local paid state. |
+| Deploy gate | Paid users deploy; others see upgrade modal. |
+
+---
+
+## 9. Recommendations
+
+1. **Push:** `git push origin main` to publish the latest commit.
+2. **Security:** Run `npm audit fix`; consider Electron upgrade separately.
+3. **Supabase:** Ensure `users` table exists with `id` (uuid), `paid` (boolean), `plan` (text); RLS/perms allow upsert from backend.
+4. **Manual test:** Run app, click Upgrade to Deploy → pick plan → complete Stripe Checkout (test mode) → confirm redirect and paid state; then deploy.
+
+---
+
+*Report generated from workspace state. Lint fixes were applied during this audit.*

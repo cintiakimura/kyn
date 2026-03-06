@@ -50,7 +50,7 @@ export default function Landing() {
                 onClick={() => navigate("/login")}
                 className="w-full py-3 bg-white text-black font-medium rounded-lg hover:bg-gray-100 transition-colors text-[15px] mb-4"
               >
-                Start prototyping
+                Start 30 days free trial
               </button>
               <p className="text-[15px] text-white leading-relaxed">
                 No credit limit. No project limits.

@@ -27,12 +27,17 @@ export async function createCheckoutSession(req: Request, res: Response): Promis
     const origin = req.get("origin") || `${req.protocol}://${req.get("host")}` || "http://localhost:3000";
     const successUrl = `${origin}/builder?paid=true&plan=${planKey}`;
     const cancelUrl = `${origin}/builder`;
-    const session = await stripe.checkout.sessions.create({
+    const sessionParams: Stripe.Checkout.SessionCreateParams = {
       mode: "subscription",
       line_items: [{ price: priceId, quantity: 1 }],
-      success_url,
+      success_url: successUrl,
       cancel_url: cancelUrl,
-    });
+    };
+    if (planKey === "prototype") {
+      sessionParams.discounts = [{ coupon: "30KYN" }];
+      sessionParams.subscription_data = { trial_period_days: 30 };
+    }
+    const session = await stripe.checkout.sessions.create(sessionParams);
     res.json({ id: session.id, url: session.url });
   } catch (err) {
     console.error("[create-checkout-session]", err);

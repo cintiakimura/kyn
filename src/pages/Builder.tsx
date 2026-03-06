@@ -14,7 +14,7 @@ import {
 import SpeechRecognition, { useSpeechRecognition } from 'react-speech-recognition';
 import { useDropzone } from 'react-dropzone';
 import { getSetupComplete, setSetupComplete } from "../lib/setupStorage";
-import { getUserId } from "../lib/auth";
+import { getUserId, getPaidStatus, setPaidFromSuccess } from "../lib/auth";
 import SetupWizard from "../components/SetupWizard";
 
 // A component to sync Monaco with Sandpack
