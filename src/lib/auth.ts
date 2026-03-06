@@ -7,13 +7,21 @@ export async function getUserId(): Promise<string> {
   if (typeof window === "undefined") return "";
   let userId = localStorage.getItem(KEY_USER_ID);
   if (userId) return userId;
-  const res = await fetch("/api/auth/session", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({}),
-  });
-  const data = (await res.json()) as { userId?: string };
-  userId = data.userId ?? crypto.randomUUID();
+  try {
+    const res = await fetch("/api/auth/session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    if (res.ok) {
+      const data = (await res.json()) as { userId?: string };
+      userId = data?.userId ?? crypto.randomUUID();
+    } else {
+      userId = crypto.randomUUID();
+    }
+  } catch {
+    userId = crypto.randomUUID();
+  }
   localStorage.setItem(KEY_USER_ID, userId);
   return userId;
 }

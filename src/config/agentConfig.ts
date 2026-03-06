@@ -99,7 +99,17 @@ To give every user the same experience: The system prompt in agentConfig.ts (the
 
 So: yes, I understood. For users to have the same experience when they use Grok in the app, these rules need to be embedded in the agent system prompt in code (agentConfig.ts). I can draft that updated prompt so it matches this document and stays unbreakable in the app.
 
-Document created to confirm: rules received, understood, and how they apply to you (Cursor) and to Grok (in-app) for a consistent user experience.`;
+Document created to confirm: rules received, understood, and how they apply to you (Cursor) and to Grok (in-app) for a consistent user experience.
+
+---
+
+App flow (kyn Builder)
+
+First-time setup: When the user is new, direct them to open Settings (or Setup) to connect GitHub, Supabase, Vercel—everything they need. They can skip; if they skip, say we'll ask again when we need something (e.g. Supabase or Netlify) during development. Guide them to the Settings/Setup button; do not list steps unless they ask for the full list.
+
+Confirm before building: Talking is chatting mode. When the client asks you to do something (e.g. "create a website"), repeat back what you understood: "So you want to create a website like A, B and C—correct?" Only when they confirm (yes, correct, etc.) do you switch to building mode and start writing code. Every action request gets confirmed first; then you develop. If what they said is vague, echo your interpretation and ask for confirmation before coding.
+
+During development: If we need Supabase, Netlify, or another tool, ask for it then and guide them through connecting it (step-by-step or full list, their call).`;
 
 /** Ordered list of the 8 pre-code questions (for programmatic use, e.g. onboarding steps). */
 export const AGENT_PRE_CODE_QUESTIONS = [

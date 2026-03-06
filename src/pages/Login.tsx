@@ -1,21 +1,35 @@
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Github, Mail, ArrowLeft } from "lucide-react";
-import { getUserId, setUserIdAfterLogin } from "../lib/auth";
+import { setUserIdAfterLogin } from "../lib/auth";
 
 export default function Login() {
   const navigate = useNavigate();
+  const [error, setError] = useState<string | null>(null);
 
-  const handleOAuth = async (provider: string) => {
-    console.log(`[Mock] Initiating ${provider} OAuth flow...`);
-    const res = await fetch("/api/auth/session", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
-    });
-    const data = (await res.json()) as { userId?: string };
-    const userId = data.userId ?? crypto.randomUUID();
-    setUserIdAfterLogin(userId);
-    navigate("/dashboard");
+  const handleSignIn = async () => {
+    setError(null);
+    try {
+      const res = await fetch("/api/auth/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      let userId: string;
+      if (res.ok) {
+        const data = (await res.json()) as { userId?: string };
+        userId = data?.userId ?? crypto.randomUUID();
+      } else {
+        userId = crypto.randomUUID();
+        setError("Server error. Using demo session.");
+      }
+      setUserIdAfterLogin(userId);
+      navigate("/dashboard", { replace: true });
+    } catch (_e) {
+      setError("Could not reach server. Using demo session.");
+      setUserIdAfterLogin(crypto.randomUUID());
+      navigate("/dashboard", { replace: true });
+    }
   };
 
   return (
@@ -34,11 +48,11 @@ export default function Login() {
 
         <div className="space-y-4">
           <button 
-            onClick={() => handleOAuth('GitHub')}
+            onClick={handleSignIn}
             className="w-full py-3 px-4 bg-[#24292e] hover:bg-[#2f363d] text-white rounded-lg font-medium flex items-center justify-center gap-3 transition-colors"
           >
             <Github size={20} />
-            Login with GitHub
+            Continue with GitHub
           </button>
           
           <div className="relative py-4">
@@ -51,16 +65,20 @@ export default function Login() {
           </div>
 
           <button 
-            onClick={() => handleOAuth('Google')}
+            onClick={handleSignIn}
             className="w-full py-3 px-4 bg-white text-black hover:bg-gray-200 rounded-lg font-medium flex items-center justify-center gap-3 transition-colors"
           >
             <Mail size={20} />
-            Login with Google
+            Continue with Google
           </button>
         </div>
+
+        {error && (
+          <p className="mt-4 text-xs text-amber-500/90">{error}</p>
+        )}
         
         <p className="mt-8 text-xs text-gray-600">
-          No email/password required. OAuth only.
+          One click → Dashboard. No password. Demo session if server is unavailable.
         </p>
       </div>
     </div>

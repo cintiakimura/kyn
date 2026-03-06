@@ -127,7 +127,13 @@ export default function Builder() {
           if (project.package_json) setPackageJsonContent(project.package_json);
           try {
             const msgs = typeof project.chat_messages === "string" ? JSON.parse(project.chat_messages || "[]") : project.chat_messages || [];
-            if (Array.isArray(msgs) && msgs.length > 0) setChatMessages(msgs);
+            if (Array.isArray(msgs) && msgs.length > 0) {
+              setChatMessages(msgs);
+            } else if (getSetupComplete()) {
+              const opener = [{ id: crypto.randomUUID(), role: "assistant" as const, content: "Hey—what's on your mind? What do you wanna build, and why?" }];
+              setChatMessages(opener);
+              saveProject({ chat_messages: opener });
+            }
           } catch (_) {}
           setProjectLoading(false);
         })

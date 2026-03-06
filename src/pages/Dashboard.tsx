@@ -182,25 +182,9 @@ export default function Dashboard() {
 
       {/* Main content */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        {/* Top bar: Open actions center, avatar right */}
+        {/* Top bar: avatar right only */}
         <div className="h-12 flex items-center justify-between px-4 border-b border-[#333333] bg-[#252526] flex-shrink-0">
-          <div className="w-24" />
-          <div className="flex items-center gap-3">
-            <button
-              onClick={handleOpenFile}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[#333] hover:bg-[#444] text-white text-sm font-medium transition-colors"
-            >
-              <Upload size={18} />
-              Open File
-            </button>
-            <button
-              onClick={handleOpenFromGitHub}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[#333] hover:bg-[#444] text-white text-sm font-medium transition-colors"
-            >
-              <Github size={18} />
-              Open from GitHub
-            </button>
-          </div>
+          <div className="flex-1" />
           <div className="relative" ref={avatarRef}>
             <button
               onClick={() => setAvatarOpen((o) => !o)}
@@ -234,31 +218,31 @@ export default function Dashboard() {
             <div className="flex items-center justify-center min-h-[40vh] text-gray-500">Loading projects...</div>
           ) : projects.length === 0 ? (
             <div
-              className={`max-w-lg mx-auto flex flex-col items-center justify-center min-h-[60vh] text-center rounded-xl border-2 border-dashed transition-colors ${dragOver ? "border-blue-500 bg-blue-500/5" : "border-[#333333]"}`}
+              className={`max-w-md mx-auto flex flex-col items-center justify-center min-h-[60vh] text-center rounded-2xl border border-[#333333] bg-[#252526]/50 p-10 transition-colors ${dragOver ? "border-blue-500 bg-blue-500/5" : ""}`}
               onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
               onDragLeave={() => setDragOver(false)}
               onDrop={handleDrop}
             >
-              <h2 className="text-2xl font-semibold text-white mb-2">Let's build!</h2>
-              <p className="text-gray-400 text-sm mb-8">Open a local project or clone from GitHub. Drag and drop a file here.</p>
-              <div className="flex gap-4 mb-6">
-                <button
-                  onClick={handleOpenFile}
-                  className="flex items-center gap-2 px-5 py-3 bg-[#333] hover:bg-[#444] text-white rounded-lg transition-colors border border-[#444]"
-                >
-                  <Upload size={18} />
-                  Open File
-                </button>
-                <button
-                  onClick={handleOpenFromGitHub}
-                  className="flex items-center gap-2 px-5 py-3 bg-[#333] hover:bg-[#444] text-white rounded-lg transition-colors border border-[#444]"
-                >
-                  <Github size={18} />
-                  Open from GitHub
-                </button>
+              <h2 className="text-2xl font-semibold text-white mb-2">Let's build.</h2>
+              <p className="text-gray-400 text-sm mb-6">
+                Click the microphone or type in the chat. Explain in your own words what you want to build.
+              </p>
+              <button
+                onClick={() => createAndOpenProject("New project")}
+                className="flex items-center gap-2 px-6 py-3 bg-[#007acc] hover:bg-[#1a8ad4] text-white font-medium rounded-lg transition-colors mb-2"
+              >
+                <Mic size={18} />
+                Start with Grok
+              </button>
+              <p className="text-gray-500 text-xs">
+                Opens a new project. Grok will greet you and guide you through the setup questions.
+              </p>
+              <div className="flex items-center gap-2 text-gray-500 text-xs mt-4">
+                <Mic size={14} />
+                <span>Or use the mic in the chat panel →</span>
               </div>
               {!setupComplete && (
-                <p className="text-sm text-gray-500">
+                <p className="mt-6 text-sm text-gray-500">
                   <button onClick={() => navigate("/setup")} className="text-blue-400 hover:underline">
                     Connect stack first?
                   </button>
