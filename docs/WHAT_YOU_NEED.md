@@ -67,6 +67,8 @@ So: **no API key or user ID required** to deploy. You only need your Netlify or 
 
 **Summary:** You don’t need anything from Netlify or Vercel in `.env` right now. For deploying kyn: connect the repo in their UI. The Team ID you found is useful only if we add real Netlify API deploy; then we’d need a PAT (and optionally that team ID), not a “user ID”.
 
+**Login not working on Netlify URL:** Netlify serves only the static frontend; there is no Node server, so `/api/auth/session` and other `/api/*` routes return 404. Fix: (1) Deploy the backend (Express in `server.ts`) somewhere that runs Node (e.g. Railway, Render, Fly.io). (2) In Netlify, set a **build environment variable** `VITE_API_URL` = your backend URL (e.g. `https://your-app.railway.app`, no trailing slash). Rebuild and redeploy. The frontend will then call your backend for login and all API requests.
+
 ---
 
 ## 6. Voice / open chat (talk + Grok responds with voice, everything in chat)

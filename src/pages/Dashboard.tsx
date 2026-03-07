@@ -20,6 +20,7 @@ import SpeechRecognition, { useSpeechRecognition } from "react-speech-recognitio
 import { useDropzone } from "react-dropzone";
 import { getSetupComplete } from "../lib/setupStorage";
 import { getUserId } from "../lib/auth";
+import { getApiBase, isBackendAvailable, setBackendUnavailable } from "../lib/api";
 
 type ProjectStatus = "Live" | "Preview" | "Draft";
 
@@ -42,6 +43,7 @@ export default function Dashboard() {
   const [chatOpen, setChatOpen] = useState(true);
   const [chatMessages, setChatMessages] = useState<{ id: string; role: "user" | "assistant"; content: string }[]>([]);
   const [dragOver, setDragOver] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
   const avatarRef = useRef<HTMLDivElement>(null);
 
   const { transcript, listening } = useSpeechRecognition();
@@ -49,10 +51,20 @@ export default function Dashboard() {
 
   useEffect(() => {
     let cancelled = false;
+    if (!isBackendAvailable()) {
+      getUserId().then(() => {
+        if (!cancelled) setLoading(false);
+      });
+      return () => { cancelled = true; };
+    }
+    const api = getApiBase();
     getUserId().then((userId) => {
       if (cancelled) return;
-      fetch(`/api/users/${userId}/projects`)
-        .then((r) => r.json())
+      fetch(`${api}/api/users/${userId}/projects`)
+        .then((r) => {
+          if (!r.ok) setBackendUnavailable();
+          return r.json();
+        })
         .then((list: { id: string; name: string; status: string; last_edited: string }[]) => {
           if (cancelled) return;
           setProjects(
@@ -66,7 +78,9 @@ export default function Dashboard() {
             }))
           );
         })
-        .catch(() => {})
+        .catch(() => {
+          setBackendUnavailable();
+        })
         .finally(() => setLoading(false));
     });
     return () => { cancelled = true; };
@@ -87,19 +101,44 @@ export default function Dashboard() {
   });
 
   const createAndOpenProject = async (name: string) => {
-    const userId = await getUserId();
-    const res = await fetch(`/api/users/${userId}/projects`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name }),
-    });
-    if (!res.ok) return;
-    const project = (await res.json()) as { id: string; name: string; status: string; last_edited: string };
-    setProjects((prev) => [
-      ...prev,
-      { id: project.id, name: project.name, status: (project.status as ProjectStatus) || "Draft", lastEdited: project.last_edited || "Just now", thumbnail: null, url: null },
-    ]);
-    navigate(`/builder/${project.id}`);
+    setCreateError(null);
+    if (!isBackendAvailable()) {
+      const tempId = crypto.randomUUID();
+      setCreateError("Demo mode—connect a backend (set VITE_API_URL) to save projects.");
+      navigate(`/builder/${tempId}`, { state: { demo: true } });
+      return;
+    }
+    try {
+      const userId = await getUserId();
+      const api = getApiBase();
+      const res = await fetch(`${api}/api/users/${userId}/projects`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      if (res.ok) {
+        try {
+          const project = (await res.json()) as { id: string; name: string; status: string; last_edited: string };
+          setProjects((prev) => [
+            ...prev,
+            { id: project.id, name: project.name, status: (project.status as ProjectStatus) || "Draft", lastEdited: project.last_edited || "Just now", thumbnail: null, url: null },
+          ]);
+          navigate(`/builder/${project.id}`);
+        } catch {
+          setCreateError("Could not create project. Try again.");
+        }
+        return;
+      }
+      setBackendUnavailable();
+      const tempId = crypto.randomUUID();
+      setCreateError("Backend not connected. Opening in demo mode—your work won’t be saved until you connect a backend.");
+      navigate(`/builder/${tempId}`, { state: { demo: true } });
+    } catch (_err) {
+      setBackendUnavailable();
+      const tempId = crypto.randomUUID();
+      setCreateError("Could not reach backend. Opening in demo mode—your work won’t be saved until you connect a backend.");
+      navigate(`/builder/${tempId}`, { state: { demo: true } });
+    }
   };
 
   const handleFile = async (file: File) => {
@@ -237,6 +276,9 @@ export default function Dashboard() {
               <p className="text-gray-500 text-xs">
                 Opens a new project. Grok will greet you and guide you through the setup questions.
               </p>
+              {createError && (
+                <p className="mt-3 text-xs text-amber-500/90 max-w-sm">{createError}</p>
+              )}
               <div className="flex items-center gap-2 text-gray-500 text-xs mt-4">
                 <Mic size={14} />
                 <span>Or use the mic in the chat panel →</span>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams, useLocation } from "react-router-dom";
 import { 
   Play, Square, Terminal as TerminalIcon, Layout, 
   Mic, MicOff, Settings, FileCode, Github, Cloud,
@@ -15,6 +15,7 @@ import SpeechRecognition, { useSpeechRecognition } from 'react-speech-recognitio
 import { useDropzone } from 'react-dropzone';
 import { getSetupComplete, setSetupComplete } from "../lib/setupStorage";
 import { getUserId, getPaidStatus, setPaidFromSuccess } from "../lib/auth";
+import { getApiBase } from "../lib/api";
 import SetupWizard from "../components/SetupWizard";
 
 // A component to sync Monaco with Sandpack
@@ -48,7 +49,9 @@ function applyCodeFromContent(
 
 export default function Builder() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
+  const isDemoMode = location.state?.demo === true;
   const { projectId } = useParams<{ projectId?: string }>();
   const [projectLoading, setProjectLoading] = useState(!!projectId);
   const [paidStatus, setPaidStatus] = useState(getPaidStatus);
@@ -95,7 +98,7 @@ export default function Builder() {
     (async () => {
       const userId = await getUserId();
       try {
-        await fetch("/api/update-paid-status", {
+        await fetch(`${getApiBase()}/api/update-paid-status`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ plan, userId }),
@@ -116,25 +119,33 @@ export default function Builder() {
     let cancelled = false;
     getUserId().then((userId) => {
       if (cancelled) return;
-      fetch(`/api/users/${userId}/projects/${projectId}`)
+      fetch(`${getApiBase()}/api/users/${userId}/projects/${projectId}`)
         .then((r) => (r.ok ? r.json() : null))
         .then((project: { code?: string; package_json?: string; chat_messages?: string } | null) => {
-          if (cancelled || !project) {
+          if (cancelled) {
             setProjectLoading(false);
             return;
           }
-          if (project.code) setCode(project.code);
-          if (project.package_json) setPackageJsonContent(project.package_json);
-          try {
-            const msgs = typeof project.chat_messages === "string" ? JSON.parse(project.chat_messages || "[]") : project.chat_messages || [];
-            if (Array.isArray(msgs) && msgs.length > 0) {
-              setChatMessages(msgs);
-            } else if (getSetupComplete()) {
+          if (project) {
+            if (project.code) setCode(project.code);
+            if (project.package_json) setPackageJsonContent(project.package_json);
+            try {
+              const msgs = typeof project.chat_messages === "string" ? JSON.parse(project.chat_messages || "[]") : project.chat_messages || [];
+              if (Array.isArray(msgs) && msgs.length > 0) {
+                setChatMessages(msgs);
+              } else if (getSetupComplete()) {
+                const opener = [{ id: crypto.randomUUID(), role: "assistant" as const, content: "Hey—what's on your mind? What do you wanna build, and why?" }];
+                setChatMessages(opener);
+                saveProject({ chat_messages: opener });
+              }
+            } catch (_) {}
+          } else {
+            // Project not found (e.g. 404 from demo/temp id): show Grok opener so "Start with Grok" still works
+            if (getSetupComplete()) {
               const opener = [{ id: crypto.randomUUID(), role: "assistant" as const, content: "Hey—what's on your mind? What do you wanna build, and why?" }];
               setChatMessages(opener);
-              saveProject({ chat_messages: opener });
             }
-          } catch (_) {}
+          }
           setProjectLoading(false);
         })
         .catch(() => setProjectLoading(false));
@@ -151,7 +162,7 @@ export default function Builder() {
       chat_messages: updates?.chat_messages ?? chatRef.current,
       last_edited: new Date().toISOString(),
     };
-    await fetch(`/api/users/${userId}/projects/${projectId}`, {
+    await fetch(`${getApiBase()}/api/users/${userId}/projects/${projectId}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -207,7 +218,7 @@ export default function Builder() {
     ];
     addLog(`[Grok]: Sending to agent...`);
     try {
-      const res = await fetch('/api/agent/chat', {
+      const res = await fetch(`${getApiBase()}/api/agent/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messages }),
@@ -336,7 +347,7 @@ export default function Builder() {
     addLog(`[Deploy]: Initiating ${type} deployment...`);
     try {
       const endpoint = type === 'github' ? '/api/deploy' : '/api/netlify/hook';
-      const res = await fetch(endpoint, { method: 'POST' });
+      const res = await fetch(`${getApiBase()}${endpoint}`, { method: 'POST' });
       const data = await res.json();
       if (res.ok) {
         addLog(`[Deploy Success]: ${data.message}`);
@@ -350,7 +361,7 @@ export default function Builder() {
 
   const startCheckout = async (plan: 'prototype' | 'king_pro') => {
     try {
-      const res = await fetch('/api/create-checkout-session', {
+      const res = await fetch(`${getApiBase()}/api/create-checkout-session`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ plan }),
@@ -367,9 +378,13 @@ export default function Builder() {
   };
 
   return (
-    <div className="flex h-screen bg-[#1e1e2e] text-[#d4d4d4] overflow-hidden font-sans">
-      
-      {/* Activity Bar (IDE style - dark blue-grey) */}
+    <div className="flex h-screen bg-[#1e1e2e] text-[#d4d4d4] overflow-hidden font-sans flex-col">
+      {isDemoMode && (
+        <div className="flex-shrink-0 px-4 py-2 bg-amber-500/15 border-b border-amber-500/30 text-amber-200 text-sm text-center">
+          Demo mode—projects won’t be saved until you connect a backend. Set VITE_API_URL in Netlify to your backend URL and redeploy.
+        </div>
+      )}
+      <div className="flex flex-1 min-h-0">
       <div className="w-12 bg-[#252536] flex flex-col items-center py-4 border-r border-[#3d3d4d] z-10">
         <button
           className={`p-2 rounded-md mb-4 transition-colors border-l-2 ${activeTabId !== 'preview' ? 'text-white bg-[#2d2d3d] border-l-[#007acc]' : 'text-[#9ca3af] hover:text-white hover:bg-[#2d2d3d] border-l-transparent'}`}
@@ -691,6 +706,7 @@ export default function Builder() {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

@@ -2,6 +2,18 @@
 
 One-time setup after login—no repeats. Platform owner fills env once.
 
+## Known npm warnings (safe to ignore)
+
+When you run `npm install` or `npm run build`, you may see deprecation warnings from **transitive** dependencies (not from this repo directly):
+
+- **prebuild-install** – used by `better-sqlite3` for native bindings; still works. Upstream may switch to `prebuildify` later.
+- **intersection-observer** – polyfill pulled in by Sandpack; modern browsers don’t need it. The warning is from a dependency.
+- **boolean** – optional dependency of another package; no action needed.
+
+These do not affect build or runtime. The Vite **chunk size** warning is relaxed in `vite.config.ts` (`chunkSizeWarningLimit: 1000`).
+
+**Browser console:** `A listener indicated an asynchronous response by returning true...` is from a **browser extension** (e.g. password manager, ad blocker), not from this app. You can ignore it or disable extensions on the site.
+
 ## Setup Instructions
 
 1. Copy `.env.example` to `.env`
@@ -12,6 +24,16 @@ One-time setup after login—no repeats. Platform owner fills env once.
    - `NETLIFY_PAT`
    - `SUPABASE_URL`
    - `SUPABASE_ANON_KEY`
+
+## Deploying frontend (Vercel / Netlify) and backend
+
+The repo builds a **static frontend** (Vite). Vercel and Netlify deploy only that—there is **no API** on the static host, so `/api/auth/session` and `/api/users/.../projects` would 404.
+
+- **Frontend only (no backend):** Do **not** set `VITE_API_URL`. The app runs in **demo mode**: after the first failed request it stops calling the API, so no 404s. Login and “Start with Grok” work with a local session and open the Builder in demo mode. Use **`vercel.json`** (Vercel) or **`public/_redirects`** (Netlify) so routes like `/login` and `/dashboard` serve the app (SPA).
+- **With a backend:** Deploy the Express server (e.g. **Railway**, **Render**, **Fly.io**) and point the frontend to it:
+  1. On the backend, set `ALLOWED_ORIGIN` to your frontend URL (e.g. `https://your-app.vercel.app`) for CORS.
+  2. In Vercel/Netlify → Environment variables, add **`VITE_API_URL`** = your backend URL (e.g. `https://your-backend.railway.app`, no trailing slash).
+  3. Redeploy so the build picks up `VITE_API_URL`. Login and projects will then use the real API.
 
 ## Features
 

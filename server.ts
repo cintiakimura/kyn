@@ -6,9 +6,21 @@ import * as db from "./db.js";
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT) || 3000;
 
   app.use(express.json());
+
+  // CORS: when frontend is on another host (e.g. Netlify), set ALLOWED_ORIGIN to that URL
+  const allowedOrigin = process.env.ALLOWED_ORIGIN;
+  if (allowedOrigin) {
+    app.use((req, res, next) => {
+      res.setHeader("Access-Control-Allow-Origin", allowedOrigin);
+      res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS");
+      res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+      if (req.method === "OPTIONS") return res.sendStatus(204);
+      next();
+    });
+  }
 
   // Session: return or create a userId (mock auth; client stores it)
   app.post("/api/auth/session", (req, res) => {

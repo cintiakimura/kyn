@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Github, Mail, ArrowLeft } from "lucide-react";
 import { setUserIdAfterLogin } from "../lib/auth";
+import { getApiBase, isBackendAvailable, setBackendUnavailable } from "../lib/api";
 
 export default function Login() {
   const navigate = useNavigate();
@@ -9,27 +10,33 @@ export default function Login() {
 
   const handleSignIn = async () => {
     setError(null);
-    try {
-      const res = await fetch("/api/auth/session", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      });
-      let userId: string;
-      if (res.ok) {
-        const data = (await res.json()) as { userId?: string };
-        userId = data?.userId ?? crypto.randomUUID();
-      } else {
-        userId = crypto.randomUUID();
-        setError("Server error. Using demo session.");
+    let userId = crypto.randomUUID();
+    if (isBackendAvailable()) {
+      const apiBase = getApiBase();
+      try {
+        const res = await fetch(`${apiBase}/api/auth/session`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({}),
+        });
+        if (res.ok) {
+          try {
+            const data = (await res.json()) as { userId?: string };
+            if (data?.userId) userId = data.userId;
+          } catch {
+            setError("Server responded but not JSON. Using demo session.");
+          }
+        } else {
+          setBackendUnavailable();
+          setError("No backend at this URL. Using demo session.");
+        }
+      } catch (_e) {
+        setBackendUnavailable();
+        setError("Could not reach server. Using demo session.");
       }
-      setUserIdAfterLogin(userId);
-      navigate("/dashboard", { replace: true });
-    } catch (_e) {
-      setError("Could not reach server. Using demo session.");
-      setUserIdAfterLogin(crypto.randomUUID());
-      navigate("/dashboard", { replace: true });
     }
+    setUserIdAfterLogin(userId);
+    navigate("/dashboard", { replace: true });
   };
 
   return (

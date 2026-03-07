@@ -1,3 +1,5 @@
+import { getApiBase, isBackendAvailable, setBackendUnavailable } from "./api";
+
 /**
  * Client-side auth: get or create userId and persist for API calls.
  */
@@ -7,8 +9,14 @@ export async function getUserId(): Promise<string> {
   if (typeof window === "undefined") return "";
   let userId = localStorage.getItem(KEY_USER_ID);
   if (userId) return userId;
+  if (!isBackendAvailable()) {
+    userId = crypto.randomUUID();
+    localStorage.setItem(KEY_USER_ID, userId);
+    return userId;
+  }
+  const apiBase = getApiBase();
   try {
-    const res = await fetch("/api/auth/session", {
+    const res = await fetch(`${apiBase}/api/auth/session`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({}),
@@ -17,9 +25,11 @@ export async function getUserId(): Promise<string> {
       const data = (await res.json()) as { userId?: string };
       userId = data?.userId ?? crypto.randomUUID();
     } else {
+      setBackendUnavailable();
       userId = crypto.randomUUID();
     }
   } catch {
+    setBackendUnavailable();
     userId = crypto.randomUUID();
   }
   localStorage.setItem(KEY_USER_ID, userId);
