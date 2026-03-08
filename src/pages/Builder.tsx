@@ -16,7 +16,7 @@ import { useDropzone } from 'react-dropzone';
 import { getSetupComplete, setSetupComplete } from "../lib/setupStorage";
 import { getUserId, getPaidStatus, setPaidFromSuccess } from "../lib/auth";
 import { getApiBase } from "../lib/api";
-import { hasUiGenerateIntent, extractUiGeneratePrompt } from "../lib/uiGenerateIntent";
+import { extractUiGeneratePrompt } from "../lib/uiGenerateIntent";
 import SetupWizard from "../components/SetupWizard";
 import UpgradeProModal, { logFreeTierAttempt } from "../components/UpgradeProModal";
 
@@ -272,37 +272,39 @@ export default function Builder() {
     addLog(`[You]: ${text.slice(0, 60)}${text.length > 60 ? '…' : ''}`);
     saveProject({ chat_messages: [...chatMessages, userMsg] });
 
-    // If user asked for UI/mockup, call image generation and show result before Grok reply
+    // If user asked for UI/layout/design, call Builder.io Visual Copilot and apply generated code
     const uiPrompt = extractUiGeneratePrompt(text);
     if (uiPrompt) {
       (async () => {
         try {
           const userId = await getUserId();
-          const res = await fetch(`${getApiBase()}/api/grok/ui-generate`, {
+          const res = await fetch(`${getApiBase()}/api/builder/generate`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ prompt: uiPrompt, size: "1024x1024", n: 1, userId }),
+            body: JSON.stringify({ prompt: uiPrompt, userId }),
           });
-          const data = await res.json().catch(() => ({})) as { data?: { url?: string }[]; error?: string; placeholder?: boolean };
-          if (res.ok && data.data?.length) {
-            const urls = data.data.map((d) => d.url).filter(Boolean) as string[];
-            if (urls.length > 0) {
-              const desc = text.slice(0, 80) + (text.length > 80 ? "…" : "");
-              const kynContent = `Here's a visual mockup of ${desc} — does this match what you had in mind? Want adjustments, different style, or another variation?`;
-              const mockupMsg = { id: crypto.randomUUID(), role: 'assistant' as const, content: kynContent, images: urls };
-              setChatMessages(prev => [...prev, mockupMsg]);
-              saveProject({ chat_messages: [...chatMessages, userMsg, mockupMsg] });
-              if (grokSpeaks && typeof window !== "undefined" && window.speechSynthesis) {
-                const u = new SpeechSynthesisUtterance(kynContent);
-                u.rate = 0.92;
-                const voices = window.speechSynthesis.getVoices();
-                const v = voices.find((x) => x.lang.startsWith("en-"));
-                if (v) u.voice = v;
-                window.speechSynthesis.speak(u);
-              }
+          const data = await res.json().catch(() => ({})) as { code?: string; error?: string; placeholder?: boolean };
+          if (res.ok && data.code) {
+            const code = data.code.trim();
+            if (code.includes("```")) {
+              applyCodeFromContent(code, setCode, setPackageJsonContent);
+            } else {
+              setCode(code);
+            }
+            const kynContent = "Here's the UI code from Builder.io — check the preview. Want me to refine it, add state/logic, or tweak the design?";
+            const builderMsg = { id: crypto.randomUUID(), role: 'assistant' as const, content: kynContent };
+            setChatMessages(prev => [...prev, builderMsg]);
+            saveProject({ chat_messages: [...chatMessages, userMsg, builderMsg] });
+            if (grokSpeaks && typeof window !== "undefined" && window.speechSynthesis) {
+              const u = new SpeechSynthesisUtterance(kynContent);
+              u.rate = 0.92;
+              const voices = window.speechSynthesis.getVoices();
+              const v = voices.find((x) => x.lang.startsWith("en-"));
+              if (v) u.voice = v;
+              window.speechSynthesis.speak(u);
             }
           } else if (data.error && !data.placeholder) {
-            const errMsg = { id: crypto.randomUUID(), role: 'assistant' as const, content: `UI mockup: ${data.error}` };
+            const errMsg = { id: crypto.randomUUID(), role: 'assistant' as const, content: `UI generation: ${data.error}` };
             setChatMessages(prev => [...prev, errMsg]);
             saveProject({ chat_messages: [...chatMessages, userMsg, errMsg] });
           }
@@ -329,31 +331,33 @@ export default function Builder() {
           (async () => {
             try {
               const userId = await getUserId();
-              const res = await fetch(`${getApiBase()}/api/grok/ui-generate`, {
+              const res = await fetch(`${getApiBase()}/api/builder/generate`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ prompt: uiPrompt, size: "1024x1024", n: 1, userId }),
+                body: JSON.stringify({ prompt: uiPrompt, userId }),
               });
-              const data = await res.json().catch(() => ({})) as { data?: { url?: string }[]; error?: string; placeholder?: boolean };
-              if (res.ok && data.data?.length) {
-                const urls = data.data.map((d) => d.url).filter(Boolean) as string[];
-                if (urls.length > 0) {
-                  const desc = transcript.slice(0, 80) + (transcript.length > 80 ? "…" : "");
-                  const kynContent = `Here's a visual mockup of ${desc} — does this match what you had in mind? Want adjustments, different style, or another variation?`;
-                  const mockupMsg = { id: crypto.randomUUID(), role: 'assistant' as const, content: kynContent, images: urls };
-                  setChatMessages(prev => [...prev, mockupMsg]);
-                  saveProject({ chat_messages: [...chatMessages, userMsg, mockupMsg] });
-                  if (grokSpeaks && typeof window !== "undefined" && window.speechSynthesis) {
-                    const u = new SpeechSynthesisUtterance(kynContent);
-                    u.rate = 0.92;
-                    const voices = window.speechSynthesis.getVoices();
-                    const v = voices.find((x) => x.lang.startsWith("en-"));
-                    if (v) u.voice = v;
-                    window.speechSynthesis.speak(u);
-                  }
+              const data = await res.json().catch(() => ({})) as { code?: string; error?: string; placeholder?: boolean };
+              if (res.ok && data.code) {
+                const code = data.code.trim();
+                if (code.includes("```")) {
+                  applyCodeFromContent(code, setCode, setPackageJsonContent);
+                } else {
+                  setCode(code);
+                }
+                const kynContent = "Here's the UI code from Builder.io — check the preview. Want me to refine it, add state/logic, or tweak the design?";
+                const builderMsg = { id: crypto.randomUUID(), role: 'assistant' as const, content: kynContent };
+                setChatMessages(prev => [...prev, builderMsg]);
+                saveProject({ chat_messages: [...chatMessages, userMsg, builderMsg] });
+                if (grokSpeaks && typeof window !== "undefined" && window.speechSynthesis) {
+                  const u = new SpeechSynthesisUtterance(kynContent);
+                  u.rate = 0.92;
+                  const voices = window.speechSynthesis.getVoices();
+                  const v = voices.find((x) => x.lang.startsWith("en-"));
+                  if (v) u.voice = v;
+                  window.speechSynthesis.speak(u);
                 }
               } else if (data.error && !data.placeholder) {
-                const errMsg = { id: crypto.randomUUID(), role: 'assistant' as const, content: `UI mockup: ${data.error}` };
+                const errMsg = { id: crypto.randomUUID(), role: 'assistant' as const, content: `UI generation: ${data.error}` };
                 setChatMessages(prev => [...prev, errMsg]);
                 saveProject({ chat_messages: [...chatMessages, userMsg, errMsg] });
               }
@@ -838,7 +842,7 @@ export default function Builder() {
             </div>
             <div className="space-y-2">
               <button onClick={() => startCheckout('prototype')} className="w-full py-2 px-3 bg-[#2d2d3d] hover:bg-[#3d3d5d] text-white text-sm rounded">
-                Prototype $5.99/mo
+                Prototype $0.00/mo
               </button>
               <button onClick={() => startCheckout('king_pro')} className="w-full py-2 px-3 bg-[#007acc] hover:bg-[#1a8ad4] text-white text-sm rounded">
                 King Pro $19.99/mo

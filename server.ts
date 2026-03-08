@@ -149,8 +149,8 @@ async function startServer() {
         res.status(400).json({ error: "messages array required" });
         return;
       }
-      // Use explicit model name; grok-3 and grok-3-mini are documented. Optional: GROK_MODEL=grok-4-1-fast-reasoning
-      const model = (process.env.GROK_MODEL || "grok-3").trim();
+      // Grok 4.1 reasoning mode (chain-of-thought, deeper analysis). Override with GROK_MODEL if needed.
+      const model = (process.env.GROK_MODEL || "grok-4-1-fast-reasoning").trim();
       const body = {
         model,
         messages: [
@@ -189,46 +189,40 @@ async function startServer() {
     }
   });
 
-  // Grok Imagine: UI/mockup image generation proxy (keys never exposed client-side)
-  const UI_GEN_FREE_DAILY_LIMIT = Math.max(0, parseInt(process.env.UI_GENERATION_FREE_DAILY_LIMIT ?? "5", 10));
-  const uiGenCountByUser = new Map<string, { date: string; count: number }>();
+  // Builder.io Visual Copilot: generate UI/design code from prompt (key never exposed client-side)
+  const BUILDER_FREE_DAILY_LIMIT = Math.max(0, parseInt(process.env.BUILDER_GENERATION_FREE_DAILY_LIMIT ?? "10", 10));
+  const builderGenCountByUser = new Map<string, { date: string; count: number }>();
 
-  function getUiGenUsage(userId: string): { date: string; count: number } {
+  function getBuilderGenUsage(userId: string): { date: string; count: number } {
     const today = new Date().toISOString().slice(0, 10);
-    const cur = uiGenCountByUser.get(userId);
+    const cur = builderGenCountByUser.get(userId);
     if (!cur || cur.date !== today) return { date: today, count: 0 };
     return cur;
   }
 
-  function incrementUiGenUsage(userId: string): void {
+  function incrementBuilderGenUsage(userId: string): void {
     const today = new Date().toISOString().slice(0, 10);
-    const cur = uiGenCountByUser.get(userId);
+    const cur = builderGenCountByUser.get(userId);
     if (!cur || cur.date !== today) {
-      uiGenCountByUser.set(userId, { date: today, count: 1 });
+      builderGenCountByUser.set(userId, { date: today, count: 1 });
       return;
     }
     cur.count++;
-    uiGenCountByUser.set(userId, cur);
+    builderGenCountByUser.set(userId, cur);
   }
 
-  app.post("/api/grok/ui-generate", async (req, res) => {
+  app.post("/api/builder/generate", async (req, res) => {
     try {
-      const { prompt, size = "1024x1024", n = 1, userId } = req.body as {
-        prompt?: string;
-        size?: string;
-        n?: number;
-        userId?: string;
-      };
+      const { prompt, userId } = req.body as { prompt?: string; userId?: string };
       if (!prompt || typeof prompt !== "string" || prompt.trim().length === 0) {
         res.status(400).json({ error: "prompt is required" });
         return;
       }
       const uid = typeof userId === "string" ? userId : "";
-      let apiKey = (process.env.XAI_API_KEY || process.env.GROK_API_KEY || "").trim();
-      if (apiKey === "PLACEHOLDER") apiKey = "";
-      if (!apiKey) {
-        res.status(200).json({
-          error: "Add your xAI key in settings for real UI visuals (optional on free tier).",
+      const apiKey = (process.env.BUILDER_PRIVATE_KEY || "").trim();
+      if (!apiKey || apiKey === "PLACEHOLDER") {
+        res.status(503).json({
+          error: "Builder.io not configured. Add BUILDER_PRIVATE_KEY to .env (Builder.io dashboard → API keys).",
           placeholder: true,
         });
         return;
@@ -245,39 +239,31 @@ async function startServer() {
         } catch (_) {}
       }
       if (!isPaid && uid) {
-        const usage = getUiGenUsage(uid);
-        if (usage.count >= UI_GEN_FREE_DAILY_LIMIT) {
+        const usage = getBuilderGenUsage(uid);
+        if (usage.count >= BUILDER_FREE_DAILY_LIMIT) {
           res.status(429).json({
-            error: "Rate limit – try later or upgrade. Free tier: 5 UI generations per day.",
+            error: `Rate limit – try later or upgrade. Free tier: ${BUILDER_FREE_DAILY_LIMIT} UI generations per day.`,
           });
           return;
         }
       }
-      const num = Math.min(4, Math.max(1, typeof n === "number" ? n : 1));
-      const body = {
-        model: "grok-imagine-image",
-        prompt: prompt.trim(),
-        n: num,
-        size: typeof size === "string" && /^\d+x\d+$/.test(size) ? size : "1024x1024",
-        response_format: "url",
-      };
-      const response = await fetch("https://api.x.ai/v1/images/generations", {
+      const response = await fetch("https://api.builder.io/v1/ai/generate", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${apiKey}`,
         },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ prompt: prompt.trim() }),
       });
       const errText = await response.text();
       if (!response.ok) {
         let msg = errText.slice(0, 300);
         try {
-          const parsed = JSON.parse(errText) as { error?: { message?: string } };
-          msg = parsed?.error?.message || msg;
+          const parsed = JSON.parse(errText) as { error?: string; message?: string };
+          msg = parsed?.error || parsed?.message || msg;
         } catch (_) {}
         if (response.status === 401) {
-          res.status(401).json({ error: "Invalid xAI key" });
+          res.status(401).json({ error: "Invalid Builder.io API key" });
           return;
         }
         if (response.status === 429) {
@@ -287,18 +273,19 @@ async function startServer() {
         res.status(response.status).json({ error: msg });
         return;
       }
-      if (!isPaid && uid) incrementUiGenUsage(uid);
-      let data: { data?: { url?: string; revised_prompt?: string }[] };
+      if (!isPaid && uid) incrementBuilderGenUsage(uid);
+      let data: { code?: string; output?: string; component?: string };
       try {
-        data = JSON.parse(errText) as { data?: { url?: string; revised_prompt?: string }[] };
+        data = JSON.parse(errText) as { code?: string; output?: string; component?: string };
       } catch (_) {
-        res.status(500).json({ error: "Invalid response from image API" });
+        res.status(500).json({ error: "Invalid response from Builder.io" });
         return;
       }
-      res.json({ data: data?.data ?? [] });
+      const code = data?.code ?? data?.output ?? data?.component ?? "";
+      res.json({ code: code || "", raw: data });
     } catch (err) {
-      console.error("[grok ui-generate]", err);
-      res.status(500).json({ error: "UI generation failed", details: err instanceof Error ? err.message : String(err) });
+      console.error("[builder generate]", err);
+      res.status(500).json({ error: "UI code generation failed", details: err instanceof Error ? err.message : String(err) });
     }
   });
 

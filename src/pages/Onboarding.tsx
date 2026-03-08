@@ -1,7 +1,9 @@
 import { useState, ChangeEvent } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowRight, ArrowLeft, CheckCircle, Download, FileJson, LayoutTemplate } from "lucide-react";
+import { ArrowRight, ArrowLeft, CheckCircle, Download, LayoutTemplate } from "lucide-react";
 import MindMap from "../components/MindMap";
+import { getUserId } from "../lib/auth";
+import { getApiBase, isBackendAvailable, setBackendUnavailable } from "../lib/api";
 
 export default function Onboarding() {
   const navigate = useNavigate();
@@ -33,6 +35,39 @@ export default function Onboarding() {
     a.download = "tech-spec.json";
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const handleOpenInBuilder = async () => {
+    if (!isBackendAvailable()) {
+      navigate("/builder");
+      return;
+    }
+    try {
+      const userId = await getUserId();
+      const api = getApiBase();
+      const res = await fetch(`${api}/api/users/${userId}/projects`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "New project" }),
+      });
+      if (res.ok) {
+        const project = await res.json();
+        navigate(`/builder/${project.id}`);
+        return;
+      }
+      if (res.status === 403) {
+        const data = await res.json().catch(() => ({}));
+        if ((data as { error?: string }).error === "free_project_limit_reached") {
+          navigate("/dashboard"); // send to dashboard where upgrade modal can show
+          return;
+        }
+      }
+      setBackendUnavailable();
+      navigate("/builder");
+    } catch (_) {
+      setBackendUnavailable();
+      navigate("/builder");
+    }
   };
 
   return (
@@ -132,7 +167,7 @@ export default function Onboarding() {
                   Download Tech Spec
                 </button>
                 <button 
-                  onClick={() => navigate("/builder")}
+                  onClick={handleOpenInBuilder}
                   className="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-medium transition-colors flex items-center gap-2"
                 >
                   <LayoutTemplate size={20} />

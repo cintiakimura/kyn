@@ -11,6 +11,8 @@
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
     "start": "node server.ts",
+    "test:all": "node scripts/test-all.mjs",
+    "test:all:server": "START_SERVER=1 node scripts/test-all.mjs",
     "electron": "electron .",
     "electron:dev": "npm run dev & sleep 3 && electron ."
   },
@@ -47,10 +49,13 @@
     "@types/express": "^4.17.21",
     "@types/node": "^22.14.0",
     "autoprefixer": "^10.4.21",
-    "electron": "^33.0.0",
+    "electron": "^35.7.5",
     "tailwindcss": "^4.1.14",
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",
     "vite": "^6.2.0"
+  },
+  "overrides": {
+    "dompurify": "3.3.2"
   }
 }

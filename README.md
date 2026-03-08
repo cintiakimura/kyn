@@ -41,14 +41,15 @@ Chat with Grok only works when the **backend** is running and has a valid **xAI*
 
 1. **Run the full app** with **`npm run dev`** (this starts the Express server + Vite; do **not** run only `vite` or `npm run preview` or you’ll get 404/405 on `/api/agent/chat`).
 2. In the project root, put **`GROK_API_KEY`** in **`.env`** (get a key at [console.x.ai](https://console.x.ai)). Restart `npm run dev` after changing `.env`.
-3. If the frontend is on a different host (e.g. Vercel), set **`VITE_API_URL`** to that backend URL and redeploy the frontend.
+3. Chat uses **Grok 4.1 reasoning** by default (`grok-4-1-fast-reasoning`). Override with `GROK_MODEL` if needed.
+4. If the frontend is on a different host (e.g. Vercel), set **`VITE_API_URL`** to that backend URL and redeploy the frontend.
 
 If you only deploy the static frontend, there is no server to handle `POST /api/agent/chat`, so you get 405. Deploy the Express server and point the app at it (step 2 above).
 
 ## Freemium & UI generation
 
 - **Free project limit:** Set `FREE_PROJECT_LIMIT=3` (default) in `.env`. Backend returns 403 `free_project_limit_reached` when a free user tries to create a 4th project. Paid status is read from Supabase `users.paid`.
-- **UI mockup generation:** `POST /api/grok/ui-generate` proxies to xAI image API. Uses `XAI_API_KEY` or `GROK_API_KEY`. Free tier: `UI_GENERATION_FREE_DAILY_LIMIT=5` (per user per day). Pro users have unlimited. Optional BYOK: store `xai_key` in Supabase `users.user_metadata` or a dedicated column and have the backend use it when present (keys are never sent to the client).
+- **UI code generation:** `POST /api/builder/generate` proxies to Builder.io Visual Copilot (`https://api.builder.io/v1/ai/generate`). Uses `BUILDER_PRIVATE_KEY` (Builder.io dashboard → API keys). Free tier: `BUILDER_GENERATION_FREE_DAILY_LIMIT=10` per user per day; Pro unlimited. Generated React + Tailwind code is applied in the Builder; Grok 4.1 can refine or add logic on follow-up.
 
 ## Features
 

@@ -1,0 +1,45 @@
+
+=== kyn full functionality test ===
+
+Starting server on port 3077...
+Server ready.
+
+--- 1. Auth / Login-Sign up (session) ---
+  [PASS] POST /api/auth/session returns userId
+  [PASS] POST /api/auth/session echoes userId
+
+--- 2. Projects ---
+  [PASS] GET /api/users/:userId/projects
+  [PASS] GET /api/users/:userId/limits — limit=3
+  [PASS] POST /api/users/:userId/projects — id=625aec22-fb5d-4cea-95a5-c3c35cfea91a
+  [PASS] GET /api/users/:userId/projects/:id
+  [PASS] PUT /api/users/:userId/projects/:id
+
+--- 3. Agent config ---
+  [PASS] GET /api/agent/config — agentId=grok-eve
+
+--- 4. Agent chat (Grok) ---
+  [PASS] POST /api/agent/chat — reply received
+
+--- 5. UI generation (Builder.io) ---
+  [PASS] POST /api/builder/generate — 503 (BUILDER_PRIVATE_KEY not set)
+
+--- 6. Stripe & update-paid-status ---
+  [FAIL] POST /api/create-checkout-session — 500
+  [PASS] POST /api/update-paid-status — 503 (Supabase not configured)
+
+--- 7. Deploy mocks ---
+  [PASS] POST /api/deploy — mock ok
+  [PASS] POST /api/netlify/hook — mock ok
+
+Server stopped.
+
+=== REPORT ===
+
+Total: 14  Passed: 13  Failed: 1
+
+Failed:
+  - POST /api/create-checkout-session 500
+
+--- End of report ---
+

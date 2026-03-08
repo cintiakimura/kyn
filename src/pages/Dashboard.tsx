@@ -284,7 +284,7 @@ export default function Dashboard() {
       <div className="w-14 flex flex-col items-center py-4 bg-[#252526] border-r border-[#333333] flex-shrink-0">
         <div className="flex flex-col items-center gap-1 mb-4">
           <button
-            onClick={() => atProjectLimit ? setUpgradeModalOpen(true) : navigate("/onboarding")}
+            onClick={() => atProjectLimit ? setUpgradeModalOpen(true) : createAndOpenProject("New project")}
             className={`p-3 rounded-lg transition-colors ${atProjectLimit ? "bg-[#37373d] text-gray-500 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-500 text-white"}`}
             title={atProjectLimit ? "Upgrade for more projects" : "New Project"}
           >
