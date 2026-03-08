@@ -22,13 +22,17 @@ const KEY_FIRST_LOGIN = "kyn_first_login_done";
 
 export async function isFirstLogin(): Promise<boolean> {
   if (typeof window === "undefined") return false;
-  if (localStorage.getItem(KEY_FIRST_LOGIN) === "true") return false;
-  const supabase = getSupabaseAuthClient();
-  if (supabase) {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user?.user_metadata?.first_login === false) return false;
+  try {
+    if (localStorage.getItem(KEY_FIRST_LOGIN) === "true") return false;
+    const supabase = getSupabaseAuthClient();
+    if (supabase) {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user?.user_metadata?.first_login === false) return false;
+    }
+    return true;
+  } catch {
+    return true; // on error, show onboarding (fail open)
   }
-  return true;
 }
 
 export function setFirstLoginDone(): void {

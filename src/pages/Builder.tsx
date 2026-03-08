@@ -16,6 +16,7 @@ import { useDropzone } from 'react-dropzone';
 import { getSetupComplete, setSetupComplete } from "../lib/setupStorage";
 import { getUserId, getPaidStatus, setPaidFromSuccess } from "../lib/auth";
 import { getApiBase } from "../lib/api";
+import { hasUiGenerateIntent, extractUiGeneratePrompt } from "../lib/uiGenerateIntent";
 import SetupWizard from "../components/SetupWizard";
 import UpgradeProModal, { logFreeTierAttempt } from "../components/UpgradeProModal";
 
@@ -78,7 +79,7 @@ export default function Builder() {
   "private": true,
   "version": "0.0.0"
 }`);
-  const [chatMessages, setChatMessages] = useState<{ id: string; role: 'user' | 'assistant'; content: string }[]>(() =>
+  const [chatMessages, setChatMessages] = useState<{ id: string; role: 'user' | 'assistant'; content: string; images?: string[] }[]>(() =>
     getSetupComplete() ? [] : [{ id: crypto.randomUUID(), role: 'assistant', content: "Hey, before we build anything—let's connect your stack. Super quick, just once, then we're golden." }]
   );
   const [setupComplete, setSetupCompleteState] = useState(getSetupComplete());
@@ -156,7 +157,7 @@ export default function Builder() {
     return () => { cancelled = true; };
   }, [projectId]);
 
-  const saveProject = async (updates?: { code?: string; package_json?: string; chat_messages?: { id: string; role: string; content: string }[] }) => {
+  const saveProject = async (updates?: { code?: string; package_json?: string; chat_messages?: { id: string; role: string; content: string; images?: string[] }[] }) => {
     if (!projectId) return;
     const userId = await getUserId();
     const body = {
@@ -229,9 +230,12 @@ export default function Builder() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         const dataErr = (data as { error?: string })?.error;
+        const details = (data as { details?: string })?.details;
         let errMsg: string;
         if (res.status === 405 || res.status === 404) {
-          errMsg = "Grok needs your backend. Deploy the server (see README), set GROK_API_KEY there, and set VITE_API_URL to that backend URL.";
+          errMsg = "Grok needs your backend. Run the app with `npm run dev` (not just the frontend), set GROK_API_KEY in .env, and use the same origin (see README).";
+        } else if (details) {
+          errMsg = `${dataErr || "Grok error"}: ${details}`;
         } else {
           errMsg = dataErr || `Request failed (${res.status}). Add GROK_API_KEY to the backend .env (get key at console.x.ai).`;
         }
@@ -267,6 +271,45 @@ export default function Builder() {
     setChatMessages(prev => [...prev, userMsg]);
     addLog(`[You]: ${text.slice(0, 60)}${text.length > 60 ? '…' : ''}`);
     saveProject({ chat_messages: [...chatMessages, userMsg] });
+
+    // If user asked for UI/mockup, call image generation and show result before Grok reply
+    const uiPrompt = extractUiGeneratePrompt(text);
+    if (uiPrompt) {
+      (async () => {
+        try {
+          const userId = await getUserId();
+          const res = await fetch(`${getApiBase()}/api/grok/ui-generate`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ prompt: uiPrompt, size: "1024x1024", n: 1, userId }),
+          });
+          const data = await res.json().catch(() => ({})) as { data?: { url?: string }[]; error?: string; placeholder?: boolean };
+          if (res.ok && data.data?.length) {
+            const urls = data.data.map((d) => d.url).filter(Boolean) as string[];
+            if (urls.length > 0) {
+              const desc = text.slice(0, 80) + (text.length > 80 ? "…" : "");
+              const kynContent = `Here's a visual mockup of ${desc} — does this match what you had in mind? Want adjustments, different style, or another variation?`;
+              const mockupMsg = { id: crypto.randomUUID(), role: 'assistant' as const, content: kynContent, images: urls };
+              setChatMessages(prev => [...prev, mockupMsg]);
+              saveProject({ chat_messages: [...chatMessages, userMsg, mockupMsg] });
+              if (grokSpeaks && typeof window !== "undefined" && window.speechSynthesis) {
+                const u = new SpeechSynthesisUtterance(kynContent);
+                u.rate = 0.92;
+                const voices = window.speechSynthesis.getVoices();
+                const v = voices.find((x) => x.lang.startsWith("en-"));
+                if (v) u.voice = v;
+                window.speechSynthesis.speak(u);
+              }
+            }
+          } else if (data.error && !data.placeholder) {
+            const errMsg = { id: crypto.randomUUID(), role: 'assistant' as const, content: `UI mockup: ${data.error}` };
+            setChatMessages(prev => [...prev, errMsg]);
+            saveProject({ chat_messages: [...chatMessages, userMsg, errMsg] });
+          }
+        } catch (_) {}
+      })();
+    }
+
     sendToGrok(text);
   };
 
@@ -280,6 +323,44 @@ export default function Builder() {
         setChatMessages(prev => [...prev, userMsg]);
         saveProject({ chat_messages: [...chatMessages, userMsg] });
         resetTranscript();
+
+        const uiPrompt = extractUiGeneratePrompt(transcript);
+        if (uiPrompt) {
+          (async () => {
+            try {
+              const userId = await getUserId();
+              const res = await fetch(`${getApiBase()}/api/grok/ui-generate`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ prompt: uiPrompt, size: "1024x1024", n: 1, userId }),
+              });
+              const data = await res.json().catch(() => ({})) as { data?: { url?: string }[]; error?: string; placeholder?: boolean };
+              if (res.ok && data.data?.length) {
+                const urls = data.data.map((d) => d.url).filter(Boolean) as string[];
+                if (urls.length > 0) {
+                  const desc = transcript.slice(0, 80) + (transcript.length > 80 ? "…" : "");
+                  const kynContent = `Here's a visual mockup of ${desc} — does this match what you had in mind? Want adjustments, different style, or another variation?`;
+                  const mockupMsg = { id: crypto.randomUUID(), role: 'assistant' as const, content: kynContent, images: urls };
+                  setChatMessages(prev => [...prev, mockupMsg]);
+                  saveProject({ chat_messages: [...chatMessages, userMsg, mockupMsg] });
+                  if (grokSpeaks && typeof window !== "undefined" && window.speechSynthesis) {
+                    const u = new SpeechSynthesisUtterance(kynContent);
+                    u.rate = 0.92;
+                    const voices = window.speechSynthesis.getVoices();
+                    const v = voices.find((x) => x.lang.startsWith("en-"));
+                    if (v) u.voice = v;
+                    window.speechSynthesis.speak(u);
+                  }
+                }
+              } else if (data.error && !data.placeholder) {
+                const errMsg = { id: crypto.randomUUID(), role: 'assistant' as const, content: `UI mockup: ${data.error}` };
+                setChatMessages(prev => [...prev, errMsg]);
+                saveProject({ chat_messages: [...chatMessages, userMsg, errMsg] });
+              }
+            } catch (_) {}
+          })();
+        }
+
         sendToGrok(transcript);
       }
     } else {
@@ -634,6 +715,19 @@ export default function Builder() {
               <div key={msg.id} className="group">
                 <div className="text-xs text-[#9ca3af] mb-0.5">{msg.role === 'user' ? 'You' : 'Assistant'}</div>
                 <div className="text-sm text-[#d4d4d4] select-text break-words pr-8">{msg.content}</div>
+                {msg.images && msg.images.length > 0 && (
+                  <div className="mt-3 flex flex-col gap-2">
+                    {msg.images.map((url, i) => (
+                      <img
+                        key={i}
+                        src={url}
+                        alt="Generated UI mockup"
+                        loading="lazy"
+                        className="rounded-lg shadow-lg max-w-full border border-[#3d3d4d] bg-[#1e1e2e]"
+                      />
+                    ))}
+                  </div>
+                )}
                 {paidStatus.paid && (
                 <div className="flex items-center gap-1 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
                   <button

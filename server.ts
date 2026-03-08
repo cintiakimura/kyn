@@ -42,11 +42,36 @@ async function startServer() {
     }
   });
 
-  // Projects: create
-  app.post("/api/users/:userId/projects", (req, res) => {
+  // Free-tier limits (project limit for display)
+  const freeProjectLimit = () => Math.max(0, parseInt(process.env.FREE_PROJECT_LIMIT ?? "3", 10));
+  app.get("/api/users/:userId/limits", (_req, res) => {
+    res.json({ projectLimit: freeProjectLimit() });
+  });
+
+  // Projects: create (enforce free-tier project limit)
+  app.post("/api/users/:userId/projects", async (req, res) => {
     try {
       const { userId } = req.params;
       const { name } = req.body as { name?: string };
+      const limit = freeProjectLimit();
+      const count = db.countProjects(userId);
+      let isPaid = true;
+      const supabaseUrl = process.env.SUPABASE_URL;
+      const supabaseKey = process.env.SUPABASE_ANON_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY;
+      if (supabaseUrl && supabaseKey && supabaseUrl !== "PLACEHOLDER" && supabaseKey !== "PLACEHOLDER") {
+        try {
+          const { createClient } = await import("@supabase/supabase-js");
+          const supabase = createClient(supabaseUrl, supabaseKey);
+          const { data: row } = await supabase.from("users").select("paid").eq("id", userId).maybeSingle();
+          isPaid = row?.paid === true;
+        } catch (_) {
+          // If Supabase fails, allow create (fail open)
+        }
+      }
+      if (!isPaid && count >= limit) {
+        res.status(403).json({ error: "free_project_limit_reached", limit });
+        return;
+      }
       const project = db.createProject(userId, name ?? "Untitled");
       res.status(201).json(project);
     } catch (e) {
@@ -124,7 +149,8 @@ async function startServer() {
         res.status(400).json({ error: "messages array required" });
         return;
       }
-      const model = process.env.GROK_MODEL || "grok-3-latest";
+      // Use explicit model name; grok-3 and grok-3-mini are documented. Optional: GROK_MODEL=grok-4-1-fast-reasoning
+      const model = (process.env.GROK_MODEL || "grok-3").trim();
       const body = {
         model,
         messages: [
@@ -141,17 +167,138 @@ async function startServer() {
         },
         body: JSON.stringify(body),
       });
+      const errText = await response.text();
       if (!response.ok) {
-        const errText = await response.text();
-        res.status(response.status).json({ error: "Grok API error", details: errText });
+        let details: string;
+        try {
+          const parsed = JSON.parse(errText) as { error?: { message?: string } };
+          details = parsed?.error?.message || errText.slice(0, 300);
+        } catch {
+          details = errText.slice(0, 300);
+        }
+        console.error("[Grok chat] xAI error:", response.status, details);
+        res.status(response.status).json({ error: "Grok API error", details });
         return;
       }
-      const data = (await response.json()) as { choices?: { message?: { content?: string } }[] };
+      const data = JSON.parse(errText) as { choices?: { message?: { content?: string } }[] };
       const content = data.choices?.[0]?.message?.content ?? "";
       res.json({ message: { role: "assistant", content } });
     } catch (err) {
       console.error("[Grok chat]", err);
-      res.status(500).json({ error: "Grok chat failed" });
+      res.status(500).json({ error: "Grok chat failed", details: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  // Grok Imagine: UI/mockup image generation proxy (keys never exposed client-side)
+  const UI_GEN_FREE_DAILY_LIMIT = Math.max(0, parseInt(process.env.UI_GENERATION_FREE_DAILY_LIMIT ?? "5", 10));
+  const uiGenCountByUser = new Map<string, { date: string; count: number }>();
+
+  function getUiGenUsage(userId: string): { date: string; count: number } {
+    const today = new Date().toISOString().slice(0, 10);
+    const cur = uiGenCountByUser.get(userId);
+    if (!cur || cur.date !== today) return { date: today, count: 0 };
+    return cur;
+  }
+
+  function incrementUiGenUsage(userId: string): void {
+    const today = new Date().toISOString().slice(0, 10);
+    const cur = uiGenCountByUser.get(userId);
+    if (!cur || cur.date !== today) {
+      uiGenCountByUser.set(userId, { date: today, count: 1 });
+      return;
+    }
+    cur.count++;
+    uiGenCountByUser.set(userId, cur);
+  }
+
+  app.post("/api/grok/ui-generate", async (req, res) => {
+    try {
+      const { prompt, size = "1024x1024", n = 1, userId } = req.body as {
+        prompt?: string;
+        size?: string;
+        n?: number;
+        userId?: string;
+      };
+      if (!prompt || typeof prompt !== "string" || prompt.trim().length === 0) {
+        res.status(400).json({ error: "prompt is required" });
+        return;
+      }
+      const uid = typeof userId === "string" ? userId : "";
+      let apiKey = (process.env.XAI_API_KEY || process.env.GROK_API_KEY || "").trim();
+      if (apiKey === "PLACEHOLDER") apiKey = "";
+      if (!apiKey) {
+        res.status(200).json({
+          error: "Add your xAI key in settings for real UI visuals (optional on free tier).",
+          placeholder: true,
+        });
+        return;
+      }
+      const supabaseUrl = process.env.SUPABASE_URL;
+      const supabaseKey = process.env.SUPABASE_ANON_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY;
+      let isPaid = false;
+      if (supabaseUrl && supabaseKey && uid && supabaseUrl !== "PLACEHOLDER" && supabaseKey !== "PLACEHOLDER") {
+        try {
+          const { createClient } = await import("@supabase/supabase-js");
+          const supabase = createClient(supabaseUrl, supabaseKey);
+          const { data: row } = await supabase.from("users").select("paid").eq("id", uid).maybeSingle();
+          isPaid = row?.paid === true;
+        } catch (_) {}
+      }
+      if (!isPaid && uid) {
+        const usage = getUiGenUsage(uid);
+        if (usage.count >= UI_GEN_FREE_DAILY_LIMIT) {
+          res.status(429).json({
+            error: "Rate limit – try later or upgrade. Free tier: 5 UI generations per day.",
+          });
+          return;
+        }
+      }
+      const num = Math.min(4, Math.max(1, typeof n === "number" ? n : 1));
+      const body = {
+        model: "grok-imagine-image",
+        prompt: prompt.trim(),
+        n: num,
+        size: typeof size === "string" && /^\d+x\d+$/.test(size) ? size : "1024x1024",
+        response_format: "url",
+      };
+      const response = await fetch("https://api.x.ai/v1/images/generations", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify(body),
+      });
+      const errText = await response.text();
+      if (!response.ok) {
+        let msg = errText.slice(0, 300);
+        try {
+          const parsed = JSON.parse(errText) as { error?: { message?: string } };
+          msg = parsed?.error?.message || msg;
+        } catch (_) {}
+        if (response.status === 401) {
+          res.status(401).json({ error: "Invalid xAI key" });
+          return;
+        }
+        if (response.status === 429) {
+          res.status(429).json({ error: "Rate limit – try later or upgrade" });
+          return;
+        }
+        res.status(response.status).json({ error: msg });
+        return;
+      }
+      if (!isPaid && uid) incrementUiGenUsage(uid);
+      let data: { data?: { url?: string; revised_prompt?: string }[] };
+      try {
+        data = JSON.parse(errText) as { data?: { url?: string; revised_prompt?: string }[] };
+      } catch (_) {
+        res.status(500).json({ error: "Invalid response from image API" });
+        return;
+      }
+      res.json({ data: data?.data ?? [] });
+    } catch (err) {
+      console.error("[grok ui-generate]", err);
+      res.status(500).json({ error: "UI generation failed", details: err instanceof Error ? err.message : String(err) });
     }
   });
 
@@ -247,6 +394,12 @@ async function startServer() {
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
+    const grokKey = process.env.GROK_API_KEY;
+    if (!grokKey || grokKey === "PLACEHOLDER") {
+      console.log("Grok: GROK_API_KEY not set — chat will return 503. Add it to .env (get key at console.x.ai).");
+    } else {
+      console.log("Grok: API key loaded — chat is enabled.");
+    }
   });
 }
 

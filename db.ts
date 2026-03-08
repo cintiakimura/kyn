@@ -45,6 +45,11 @@ export function listProjects(userId: string): Omit<ProjectRow, "code" | "package
   return rows;
 }
 
+export function countProjects(userId: string): number {
+  const row = db.prepare("SELECT COUNT(*) as count FROM projects WHERE user_id = ?").get(userId) as { count: number };
+  return row?.count ?? 0;
+}
+
 export function getProject(userId: string, projectId: string): ProjectRow | null {
   const row = db.prepare(
     "SELECT * FROM projects WHERE id = ? AND user_id = ?"

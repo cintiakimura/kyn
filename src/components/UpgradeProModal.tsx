@@ -1,9 +1,10 @@
 import React from "react";
 import { X } from "lucide-react";
+import { Link } from "react-router-dom";
 
 export function logFreeTierAttempt(action: string) {
   if (typeof console !== "undefined" && console.warn) {
-    console.warn("[Lumen Academy] Free tier: attempt blocked", { action });
+    console.warn("[kyn] Free tier: attempt blocked", { action });
   }
 }
 
@@ -11,9 +12,24 @@ type Props = {
   open: boolean;
   onClose: () => void;
   action?: string;
+  /** Custom title (default: "Upgrade to Pro") */
+  title?: string;
+  /** Custom message (default: $29/month — full code view, export, GitHub, and deploy.) */
+  message?: string;
+  /** Optional CTA label (default: "OK"). Use "Upgrade to Pro" to show link to /pricing */
+  ctaLabel?: string;
+  ctaToPricing?: boolean;
 };
 
-export default function UpgradeProModal({ open, onClose, action }: Props) {
+export default function UpgradeProModal({
+  open,
+  onClose,
+  action,
+  title = "Upgrade to Pro",
+  message = "$29/month — full code view, export, GitHub, and deploy.",
+  ctaLabel = "OK",
+  ctaToPricing = false,
+}: Props) {
   if (!open) return null;
   if (action) logFreeTierAttempt(action);
 
@@ -27,7 +43,7 @@ export default function UpgradeProModal({ open, onClose, action }: Props) {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex justify-between items-center mb-3">
-          <span className="text-sm font-medium text-white">Upgrade to Pro</span>
+          <span className="text-sm font-medium text-white">{title}</span>
           <button
             onClick={onClose}
             className="p-1 rounded text-[#9ca3af] hover:text-white hover:bg-[#2d2d3d]"
@@ -36,14 +52,24 @@ export default function UpgradeProModal({ open, onClose, action }: Props) {
           </button>
         </div>
         <p className="text-sm text-[#d4d4d4] mb-3">
-          $29/month — full code view, export, GitHub, and deploy.
+          {message}
         </p>
-        <button
-          onClick={onClose}
-          className="w-full py-2 px-3 bg-[#6366F1] hover:bg-[#4f46e5] text-white text-sm rounded-lg transition-colors"
-        >
-          OK
-        </button>
+        {ctaToPricing ? (
+          <Link
+            to="/pricing"
+            onClick={onClose}
+            className="block w-full py-2 px-3 bg-[#6366F1] hover:bg-[#4f46e5] text-white text-sm rounded-lg transition-colors text-center"
+          >
+            {ctaLabel}
+          </Link>
+        ) : (
+          <button
+            onClick={onClose}
+            className="w-full py-2 px-3 bg-[#6366F1] hover:bg-[#4f46e5] text-white text-sm rounded-lg transition-colors"
+          >
+            {ctaLabel}
+          </button>
+        )}
       </div>
     </div>
   );

@@ -16,13 +16,15 @@ import {
   Copy,
   Link2,
 } from "lucide-react";
+import { motion, AnimatePresence } from "motion/react";
 import SpeechRecognition, { useSpeechRecognition } from "react-speech-recognition";
 import { useDropzone } from "react-dropzone";
 import { getSetupComplete } from "../lib/setupStorage";
-import { getUserId } from "../lib/auth";
+import { getUserId, getPaidStatus } from "../lib/auth";
 import { getApiBase, isBackendAvailable, setBackendUnavailable } from "../lib/api";
 import { isFirstLogin, setFirstLoginDone } from "../lib/supabaseAuth";
 import FirstLoginOnboarding from "../components/FirstLoginOnboarding";
+import UpgradeProModal from "../components/UpgradeProModal";
 
 type ProjectStatus = "Live" | "Preview" | "Draft";
 
@@ -47,15 +49,40 @@ export default function Dashboard() {
   const [dragOver, setDragOver] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [showFirstLoginOnboarding, setShowFirstLoginOnboarding] = useState<boolean | null>(null);
+  const [projectLimit, setProjectLimit] = useState<number>(3);
+  const [upgradeModalOpen, setUpgradeModalOpen] = useState(false);
   const avatarRef = useRef<HTMLDivElement>(null);
 
   const { transcript, listening } = useSpeechRecognition();
+  const paidStatus = getPaidStatus();
+  const projectCount = projects.length;
+  const atProjectLimit = !paidStatus.paid && projectCount >= projectLimit;
   const setupComplete = getSetupComplete();
 
   useEffect(() => {
     let cancelled = false;
-    isFirstLogin().then((first) => {
-      if (!cancelled) setShowFirstLoginOnboarding(first);
+    isFirstLogin()
+      .then((first) => {
+        if (!cancelled) setShowFirstLoginOnboarding(first);
+      })
+      .catch(() => {
+        if (!cancelled) setShowFirstLoginOnboarding(true); // fail open: show onboarding on error
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  // Fetch free-tier project limit for display
+  useEffect(() => {
+    if (!isBackendAvailable()) return;
+    let cancelled = false;
+    getUserId().then((userId) => {
+      if (cancelled) return;
+      fetch(`${getApiBase()}/api/users/${userId}/limits`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data: { projectLimit?: number } | null) => {
+          if (!cancelled && data?.projectLimit != null) setProjectLimit(data.projectLimit);
+        })
+        .catch(() => {});
     });
     return () => { cancelled = true; };
   }, []);
@@ -113,6 +140,10 @@ export default function Dashboard() {
 
   const createAndOpenProject = async (name: string) => {
     setCreateError(null);
+    if (atProjectLimit) {
+      setUpgradeModalOpen(true);
+      return;
+    }
     if (!isBackendAvailable()) {
       const tempId = crypto.randomUUID();
       setCreateError("Demo mode—connect a backend (set VITE_API_URL) to save projects.");
@@ -127,13 +158,31 @@ export default function Dashboard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name }),
       });
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 403 && (data as { error?: string }).error === "free_project_limit_reached") {
+        setUpgradeModalOpen(true);
+        return;
+      }
       if (res.ok) {
         try {
-          const project = (await res.json()) as { id: string; name: string; status: string; last_edited: string };
-          setProjects((prev) => [
-            ...prev,
-            { id: project.id, name: project.name, status: (project.status as ProjectStatus) || "Draft", lastEdited: project.last_edited || "Just now", thumbnail: null, url: null },
-          ]);
+          const project = data as { id: string; name: string; status: string; last_edited: string };
+          setProjects((prev) => {
+            const next = [
+              ...prev,
+              { id: project.id, name: project.name, status: (project.status as ProjectStatus) || "Draft", lastEdited: project.last_edited || "Just now", thumbnail: null, url: null },
+            ];
+            if (!paidStatus.paid && next.length === projectLimit && typeof window !== "undefined" && window.speechSynthesis) {
+              const u = new SpeechSynthesisUtterance(
+                "This project's looking solid! You've got 3 live on free plan—got more ideas brewing? Upgrade to Pro for unlimited projects and real deploy power."
+              );
+              u.rate = 0.92;
+              const voices = window.speechSynthesis.getVoices();
+              const voice = voices.find((v) => v.lang.startsWith("en-"));
+              if (voice) u.voice = voice;
+              window.speechSynthesis.speak(u);
+            }
+            return next;
+          });
           navigate(`/builder/${project.id}`);
         } catch {
           setCreateError("Could not create project. Try again.");
@@ -206,24 +255,47 @@ export default function Dashboard() {
   return (
     <div className="flex h-screen bg-[#1e1e1e] text-gray-300 overflow-hidden font-sans">
       {showFirstLoginOnboarding === true && (
-        <FirstLoginOnboarding
-          onComplete={() => {
-            setFirstLoginDone();
-            setShowFirstLoginOnboarding(false);
-            setChatOpen(true);
-          }}
-        />
+        <div className="fixed inset-0 z-[100]">
+          <FirstLoginOnboarding
+            onComplete={() => {
+              setFirstLoginDone();
+              setShowFirstLoginOnboarding(false);
+              setChatOpen(true);
+            }}
+          />
+        </div>
       )}
+
+      <AnimatePresence>
+        {upgradeModalOpen && (
+          <UpgradeProModal
+            open={true}
+            onClose={() => setUpgradeModalOpen(false)}
+            action="project_limit"
+            title="You've reached the free limit"
+            message="You've reached the free limit of 3 projects! Upgrade to Pro for unlimited projects, code export, GitHub integration, one-click deploy to Firebase/Netlify, and no watermarks."
+            ctaLabel="Upgrade to Pro"
+            ctaToPricing
+          />
+        )}
+      </AnimatePresence>
 
       {/* Left sidebar - explorer style */}
       <div className="w-14 flex flex-col items-center py-4 bg-[#252526] border-r border-[#333333] flex-shrink-0">
-        <button
-          onClick={() => navigate("/onboarding")}
-          className="p-3 mb-4 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors"
-          title="New Project"
-        >
-          <Plus size={22} strokeWidth={2} />
-        </button>
+        <div className="flex flex-col items-center gap-1 mb-4">
+          <button
+            onClick={() => atProjectLimit ? setUpgradeModalOpen(true) : navigate("/onboarding")}
+            className={`p-3 rounded-lg transition-colors ${atProjectLimit ? "bg-[#37373d] text-gray-500 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-500 text-white"}`}
+            title={atProjectLimit ? "Upgrade for more projects" : "New Project"}
+          >
+            <Plus size={22} strokeWidth={2} />
+          </button>
+          {!paidStatus.paid && (
+            <span className="text-[10px] text-gray-500" title="Free tier project limit">
+              {projectCount}/{projectLimit}
+            </span>
+          )}
+        </div>
         <button
           className="p-3 rounded-lg bg-[#37373d] text-white transition-colors"
           title="Projects"
@@ -288,12 +360,21 @@ export default function Dashboard() {
                 Click the microphone or type in the chat. Explain in your own words what you want to build.
               </p>
               <button
-                onClick={() => createAndOpenProject("New project")}
-                className="flex items-center gap-2 px-6 py-3 bg-[#007acc] hover:bg-[#1a8ad4] text-white font-medium rounded-lg transition-colors mb-2"
+                onClick={() => (atProjectLimit ? setUpgradeModalOpen(true) : createAndOpenProject("New project"))}
+                disabled={atProjectLimit}
+                className={`flex items-center gap-2 px-6 py-3 font-medium rounded-lg transition-colors mb-2 ${atProjectLimit ? "bg-[#37373d] text-gray-500 cursor-not-allowed" : "bg-[#007acc] hover:bg-[#1a8ad4] text-white"}`}
               >
                 <Mic size={18} />
                 Start with Grok
               </button>
+              {atProjectLimit && (
+                <button
+                  onClick={() => setUpgradeModalOpen(true)}
+                  className="text-sm text-blue-400 hover:underline mb-2"
+                >
+                  Upgrade for unlimited projects
+                </button>
+              )}
               <p className="text-gray-500 text-xs">
                 Opens a new project. Grok will greet you and guide you through the setup questions.
               </p>
@@ -315,6 +396,18 @@ export default function Dashboard() {
           ) : (
             <>
               <div className="flex flex-col sm:flex-row gap-4 mb-6">
+                {!paidStatus.paid && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-500 bg-[#252526] border border-[#333333] px-2 py-1 rounded">
+                      Projects: {projectCount}/{projectLimit}
+                    </span>
+                    {atProjectLimit && (
+                      <button onClick={() => setUpgradeModalOpen(true)} className="text-xs text-blue-400 hover:underline">
+                        Upgrade for unlimited
+                      </button>
+                    )}
+                  </div>
+                )}
                 <div className="relative flex-1 max-w-sm">
                   <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
                   <input
